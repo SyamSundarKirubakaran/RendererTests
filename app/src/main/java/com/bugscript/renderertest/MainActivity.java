@@ -15,6 +15,7 @@ import android.widget.Toast;
 
 import com.bugscript.renderertest.Rendering.BackgroundRenderer;
 import com.bugscript.renderertest.Rendering.CameraPermissionHelper;
+import com.bugscript.renderertest.Rendering.PlaneRenderer;
 import com.google.ar.core.Anchor;
 import com.google.ar.core.ArCoreApk;
 import com.google.ar.core.Camera;
@@ -51,6 +52,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     private Session session;
     private Snackbar messageSnackbar;
     private DisplayRotationHelper displayRotationHelper;
+    private final PlaneRenderer planeRenderer = new PlaneRenderer();
 
     private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer();
 
@@ -180,6 +182,11 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         backgroundRenderer.createOnGlThread(/*context=*/ this);
 
         // Prepare the other rendering objects.
+        try {
+            planeRenderer.createOnGlThread(/*context=*/ this, "trigrid.png");
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to read plane texture");
+        }
     }
 
     @Override
@@ -201,8 +208,25 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         try {
             session.setCameraTextureName(backgroundRenderer.getTextureId());
             Frame frame = session.update();
+            Camera camera = frame.getCamera();
             // Draw background.
             backgroundRenderer.draw(frame);
+            float[] projmtx = new float[16];
+            camera.getProjectionMatrix(projmtx, 0, 0.1f, 100.0f);
+
+            if (messageSnackbar != null) {
+                for (Plane plane : session.getAllTrackables(Plane.class)) {
+                    if (plane.getType() == com.google.ar.core.Plane.Type.HORIZONTAL_UPWARD_FACING
+                            && plane.getTrackingState() == TrackingState.TRACKING) {
+                        hideLoadingMessage();
+                        break;
+                    }
+                }
+            }
+
+            planeRenderer.drawPlanes(
+                    session.getAllTrackables(Plane.class), camera.getDisplayOrientedPose(), projmtx);
+
         } catch (Throwable t) {
             // Avoid crashing the application due to unhandled exceptions.
             Log.e(TAG, "Exception on the OpenGL thread", t);
@@ -243,6 +267,19 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                     @Override
                     public void run() {
                         showSnackbarMessage("Searching for surfaces...", false);
+                    }
+                });
+    }
+
+    private void hideLoadingMessage() {
+        runOnUiThread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        if (messageSnackbar != null) {
+                            messageSnackbar.dismiss();
+                        }
+                        messageSnackbar = null;
                     }
                 });
     }
