@@ -16,6 +16,7 @@ import android.widget.Toast;
 import com.bugscript.renderertest.Rendering.BackgroundRenderer;
 import com.bugscript.renderertest.Rendering.CameraPermissionHelper;
 import com.bugscript.renderertest.Rendering.PlaneRenderer;
+import com.bugscript.renderertest.Rendering.PointCloudRenderer;
 import com.google.ar.core.Anchor;
 import com.google.ar.core.ArCoreApk;
 import com.google.ar.core.Camera;
@@ -53,6 +54,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     private Snackbar messageSnackbar;
     private DisplayRotationHelper displayRotationHelper;
     private final PlaneRenderer planeRenderer = new PlaneRenderer();
+    private final PointCloudRenderer pointCloud = new PointCloudRenderer();
 
     private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer();
 
@@ -187,6 +189,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         } catch (IOException e) {
             Log.e(TAG, "Failed to read plane texture");
         }
+        pointCloud.createOnGlThread(/*context=*/ this);
     }
 
     @Override
@@ -211,8 +214,18 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
             Camera camera = frame.getCamera();
             // Draw background.
             backgroundRenderer.draw(frame);
+            if (camera.getTrackingState() == TrackingState.PAUSED) {
+                return;
+            }
             float[] projmtx = new float[16];
             camera.getProjectionMatrix(projmtx, 0, 0.1f, 100.0f);
+            float[] viewmtx = new float[16];
+            camera.getViewMatrix(viewmtx, 0);
+            final float lightIntensity = frame.getLightEstimate().getPixelIntensity();
+            PointCloud pointCloud = frame.acquirePointCloud();
+            this.pointCloud.update(pointCloud);
+            this.pointCloud.draw(viewmtx, projmtx);
+            pointCloud.release();
 
             if (messageSnackbar != null) {
                 for (Plane plane : session.getAllTrackables(Plane.class)) {
